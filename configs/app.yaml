@@ -1,0 +1,10 @@
+ui:
+  default_task: caption
+  max_new_tokens: 256
+  temperature: 0.2
+  top_p: 1.0
+  presence_penalty: 0.0
+  frequency_penalty: 0.0
+limits:
+  # piksel bazlı uzun kenar limiti; büyük görseller VRAM’i şişirir
+  max_image_long_side: 1280

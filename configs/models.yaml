@@ -1,0 +1,36 @@
+defaults:
+  api_base: http://localhost:8000/v1
+  max_model_len: 4096              # önce 4096 ile dene; sonra 8192'ye çıkarsın
+  limit_mm_per_prompt: '{"image":1}'
+  gpu_memory_utilization: 0.90     # 0.88–0.92 arası genelde güvenli
+  trust_remote_code: true
+
+
+models:
+  - key: qwen2_5_vl_7b_awq
+    title: "Qwen2.5-VL 7B (AWQ)"
+    hf_id: "Qwen/Qwen2.5-VL-7B-Instruct-AWQ"
+    served_name: "qwen2.5-vl-7b-awq"
+    quant: "awq"
+    notes: "OCR/VQA/grounding; tek görsel."
+    supported_tasks: ["caption","vqa","ocr","detection"]
+  - key: phi_3_5_vision
+    title: "Phi-3.5 Vision Instruct"
+    hf_id: "microsoft/Phi-3.5-vision-instruct"
+    served_name: "phi-3.5-vision"
+    notes: "Hafif; caption/VQA/OCR; tek görsel."
+    supported_tasks: ["caption","vqa","ocr"]   # detection yok varsayalım
+  - key: llava_1_5_7b
+    title: "LLaVA 1.5 7B"
+    hf_id: "llava-hf/llava-1.5-7b-hf"
+    served_name: "llava-1.5-7b"
+    notes: "Yaygın VLM; tek görsel."
+    supported_tasks: ["caption","vqa"]         # OCR/detection yok varsayalım
+  - key: internvl2_8b
+    title: "InternVL2-8B"
+    hf_id: "OpenGVLab/InternVL2-8B"
+    # local_path: "models/internvl2_8b"     # istersen ver; vermezsen models/<key>
+    served_name: "internvl2-8b"
+    notes: "VQA/Caption güçlü."
+    supported_tasks: [ "caption","vqa" ]
+

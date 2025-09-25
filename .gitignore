@@ -1,0 +1,107 @@
+# -------------------------
+# Python genel
+# -------------------------
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.so
+.Python
+
+# Sanal ortamlar
+.venv/
+venv/
+env/
+ENV/
+
+# Paketleme / build çıktıları
+build/
+dist/
+.eggs/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# Test / kalite araçları
+.coverage
+.coverage.*
+.cache/
+pytest_cache/
+.pytest_cache/
+.tox/
+.mypy_cache/
+.dmypy.json
+.pyre/
+ruff_cache/
+
+# Notebook artıkları
+.ipynb_checkpoints/
+
+# -------------------------
+# Editör / OS
+# -------------------------
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.code-workspace
+
+# -------------------------
+# Log / PID / geçici
+# -------------------------
+*.log
+logs/
+*.pid
+vllm.pid
+
+# -------------------------
+# Ortam değişkenleri / sırlar
+# -------------------------
+#.env
+#.env.*
+*.secrets*.json
+
+# -------------------------
+# Büyük model ağırlıkları ve türevleri
+# (Metin tabanlı küçük konfig/dokümanları tutmak istiyoruz.)
+# -------------------------
+# Varsayılan: models altını ignore et
+models/**
+
+# İSTİSNALAR: metin tabanlı küçük dosyaları takip et
+!models/
+!models/**/
+!models/**/README.md
+!models/**/config.json
+!models/**/generation_config.json
+!models/**/processor_config.json
+!models/**/preprocessor_config.json
+!models/**/tokenizer_config.json
+!models/**/tokenizer.json
+!models/**/merges.txt
+!models/**/vocab.json
+!models/**/chat_template.json
+!models/**/chat_template.jinja
+!models/**/LICENSE
+!models/**/SECURITY.md
+!models/**/SUPPORT.md
+!models/**/CODE_OF_CONDUCT.md
+
+# AĞIR DOSYALARI özellikle ignore et (güvenli olsun)
+models/**/*.safetensors
+models/**/*.bin
+models/**/*.pt
+models/**/model.safetensors.index.json
+models/**/pytorch_model-*.bin
+models/**/rust_model.ot
+models/**/tf_model.h5
+models/**/flax_model.msgpack
+models/**/tokenizer.model
+
+# -------------------------
+# Diğer (gerekiyorsa)
+# -------------------------
+# data/
+# datasets/
+# *.parquet
+# *.csv

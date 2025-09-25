@@ -1,0 +1,21 @@
+name: vlm-ui
+channels:
+  - nvidia
+  - pytorch
+  - conda-forge
+dependencies:
+  - python=3.10
+  - pytorch>=2.3
+  - torchvision
+  - torchaudio
+  - cuda-toolkit=12.1
+  - pip
+  - pip:
+      - vllm>=0.5.5
+      - openai>=1.40.0
+      - streamlit>=1.36.0
+      - pydantic>=2.7.0
+      - pyyaml>=6.0.1
+      - pillow>=10.3.0
+      - pynvml>=11.5.0
+      - requests>=2.31.0
