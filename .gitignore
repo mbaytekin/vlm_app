@@ -1,3 +1,5 @@
+vlm_app.zip
+
 # -------------------------
 # Python genel
 # -------------------------
@@ -57,8 +59,8 @@ vllm.pid
 # -------------------------
 # Ortam değişkenleri / sırlar
 # -------------------------
-#.env
-#.env.*
+.env
+.env.*
 *.secrets*.json
 
 # -------------------------
@@ -105,3 +107,4 @@ models/**/tokenizer.model
 # datasets/
 # *.parquet
 # *.csv
+
