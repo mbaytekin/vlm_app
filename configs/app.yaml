@@ -5,6 +5,8 @@ ui:
   top_p: 1.0
   presence_penalty: 0.0
   frequency_penalty: 0.0
+  theme:
+    css_path: "src/ui/styles/chat.css"
 limits:
   # piksel bazlı uzun kenar limiti; büyük görseller VRAM’i şişirir
   max_image_long_side: 1280

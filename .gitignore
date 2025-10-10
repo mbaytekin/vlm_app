@@ -1,5 +1,3 @@
-vlm_app.zip
-
 # -------------------------
 # Python genel
 # -------------------------
@@ -55,6 +53,8 @@ Thumbs.db
 logs/
 *.pid
 vllm.pid
+vlm_app.zip
+vlm_app_code.zip
 
 # -------------------------
 # Ortam değişkenleri / sırlar

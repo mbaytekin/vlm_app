@@ -1,101 +1,141 @@
-# --- PATH BOOTSTRAP (ilk satırlar) ---
+# src/ui/app.py
+
+# --- PATH BOOTSTRAP (importlardan önce) ---
 import sys, pathlib
-ROOT = pathlib.Path(__file__).resolve().parents[2]  # …/vlm-app
+ROOT = pathlib.Path(__file__).resolve().parents[2]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
-# -------------------------------------
+# ------------------------------------------
 
-import os
-import base64
-import hashlib
+import os, time, base64
 from io import BytesIO
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 
 import streamlit as st
 from PIL import Image
+import httpx
 
-from src.shared.config import get_models_config, get_app_config
-from src.backend.registry.model_registry import list_models, get_defaults
-from src.backend.registry import launcher
-from src.backend.providers.vllm_client import VLLMBackend
+from src.shared.config import get_app_config
+from src.ui.api_client import ApiClient
 
-# Strategies
-from src.backend.strategies.caption import CaptionStrategy
-from src.backend.strategies.vqa import VQAStrategy
-from src.backend.strategies.ocr import OCRStrategy
-from src.backend.strategies.detection import DetectionStrategy
-from src.backend.strategies.direct import DirectStrategy
 
-# Utils
-from src.backend.utils.draw import draw_boxes, file_to_b64png
-
-# ------------------ Page config ------------------
-st.set_page_config(page_title="VLM UI", layout="wide")
-
-# ------------------ Load configs -----------------
-cfg_models = get_models_config()
+# ---------------- Sayfa ayarı ----------------
+st.set_page_config(page_title="VLM GATEWAY UI", layout="wide")
 cfg_app = get_app_config()
-defaults = get_defaults()
-api_base = defaults.get("api_base", "http://localhost:8000/v1")
+API_URL = os.environ.get("VLM_GATEWAY_URL", "http://localhost:9000")
+api = ApiClient(API_URL)
 
-# ------------------ Backend client ----------------
-backend = VLLMBackend(api_base=api_base)
 
-# ------------------ Helpers ----------------------
-def img_sha1(b: bytes) -> str:
-    return hashlib.sha1(b).hexdigest()  # sadece yerel oturum için
-
-def maybe_resize(image_bytes: bytes, max_long_side: int) -> bytes:
+# --------------- CSS Enjeksiyonu ---------------
+def inject_css(cfg: dict):
+    from pathlib import Path
+    css_path: Optional[str] = (cfg.get("ui", {}).get("theme", {}) or {}).get("css_path")
+    if css_path:
+        p = Path(css_path)
+        if not p.is_absolute():
+            p = (Path(__file__).resolve().parents[2] / css_path).resolve()
+    else:
+        p = Path(__file__).resolve().parent / "styles" / "chat.css"
     try:
-        im = Image.open(BytesIO(image_bytes)).convert("RGB")
+        st.markdown(p.read_text(encoding="utf-8"), unsafe_allow_html=True)
     except Exception:
-        return image_bytes
-    w, h = im.size
-    long_side = max(w, h)
-    if long_side <= max_long_side:
-        return image_bytes
-    scale = max_long_side / float(long_side)
-    new_w, new_h = int(w * scale), int(h * scale)
-    rim = im.resize((new_w, new_h), Image.LANCZOS)
-    out = BytesIO()
-    rim.save(out, format="PNG")
-    return out.getvalue()
+        st.markdown("""
+        <style>
+        .chat-wrap{display:flex;margin:6px 0;}
+        .chat-bubble{padding:.65rem .85rem;border-radius:14px;max-width:80%;
+          line-height:1.35;color:#0f172a;background:#f7f7f8;border:1px solid #e5e7eb;}
+        .user{justify-content:flex-end;} .assistant{justify-content:flex-start;}
+        .user .chat-bubble{background:#e9efff;}
+        </style>
+        """, unsafe_allow_html=True)
 
+inject_css(cfg_app)
+
+
+# --------------- Session State ----------------
 def ensure_state():
     ss = st.session_state
-    ss.setdefault("threads", {})          # image_id -> {"image_bytes", "image_dataurl", "history":[{"role","text"}]}
+    # threads_local[tid] = {"history":[{id,role,text,render,ts}], "preview_dataurl":str}
+    ss.setdefault("threads_local", {})
     ss.setdefault("current_thread_id", None)
     ss.setdefault("selected_model_key", None)
 
 ensure_state()
 
-# ------------------ Sidebar: Model & Controls -----
+
+# ---------------- Yardımcılar -----------------
+def light_gateway_alive() -> bool:
+    try:
+        return httpx.get(f"{API_URL}/health", timeout=2).status_code == 200
+    except Exception:
+        return False
+
+def set_thread_preview(tid: str, dataurl: str):
+    t = st.session_state.threads_local.setdefault(tid, {"history": [], "preview_dataurl": None})
+    t["preview_dataurl"] = dataurl
+
+def add_local_message(tid: str, role: str, text: str, render: Dict[str,Any] | None = None):
+    """Mesajı state'e ekler; Streamlit mutation edge-case'lerini önlemek için kopya kullanır."""
+    t = st.session_state.threads_local.setdefault(tid, {"history": [], "preview_dataurl": None})
+    hist = list(t["history"])
+    hist.append({
+        "id": f"{role}-{time.time_ns()}",
+        "role": role,
+        "text": text,
+        "render": render,
+        "ts": time.time()
+    })
+    t["history"] = hist
+
+def sorted_history(tid: str) -> List[Dict[str,Any]]:
+    t = st.session_state.threads_local.get(tid, {"history": []})
+    return sorted(t["history"], key=lambda x: x.get("ts", 0))
+
+def show_bubble(role: str, text: str):
+    import html
+    cls = "user" if role == "user" else "assistant"
+    st.markdown(
+        f"<div class='chat-wrap {cls}'><div class='chat-bubble'>{html.escape(text)}</div></div>",
+        unsafe_allow_html=True
+    )
+
+def to_image_from_dataurl(dataurl: str) -> Optional[Image.Image]:
+    try:
+        _, b64 = dataurl.split(",", 1)
+        return Image.open(BytesIO(base64.b64decode(b64)))
+    except Exception:
+        return None
+
+
+# ---------------- Sidebar -----------------
 st.sidebar.header("Model ve Görev")
 
-# Model list
-models = list_models()
-if not models:
-    st.sidebar.error("configs/models.yaml içinde model tanımı bulunamadı.")
+# Modelleri gateway'den çek
+try:
+    model_list = api.list_models()
+except Exception as e:
+    st.sidebar.error(f"Gateway bağlantısı yok: {e}")
     st.stop()
-model_titles = {m.title: m for m in models}
-sel_title = st.sidebar.selectbox("Model", list(model_titles.keys()), index=0)
-selected = model_titles[sel_title]
-st.session_state.selected_model_key = selected.key
 
-if selected.notes:
-    st.sidebar.caption(selected.notes)
+if not model_list:
+    st.sidebar.error("Gateway üzerinde model tanımı bulunamadı.")
+    st.stop()
+
+title2model = {m["title"]: m for m in model_list}
+sel_title = st.sidebar.selectbox("Model", list(title2model.keys()))
+selected = title2model[sel_title]
+st.session_state.selected_model_key = selected["key"]
+
+if selected.get("notes"):
+    st.sidebar.caption(selected["notes"])
 
 ALL_TASKS = ["caption", "vqa", "ocr", "detection"]
-allowed_tasks = [t for t in ALL_TASKS if t in (getattr(selected, "supported_tasks", []) or [])]
-if not allowed_tasks:
-    allowed_tasks = ["caption"]
+allowed = selected.get("supported_tasks", []) or ["caption"]
+allowed_tasks = [t for t in ALL_TASKS if t in allowed] or ["caption"]
 
 default_task = cfg_app.get("ui", {}).get("default_task", "caption")
 default_idx = 0 if default_task not in allowed_tasks else allowed_tasks.index(default_task)
 task = st.sidebar.selectbox("Görev", allowed_tasks, index=default_idx)
-unsupported = set(ALL_TASKS) - set(allowed_tasks)
-if unsupported:
-    st.sidebar.caption(f"Bu modelin desteklemediği görevler: {', '.join(sorted(unsupported))}")
 
 with st.sidebar.expander("Gelişmiş"):
     max_new_tokens = st.number_input("max_new_tokens", min_value=1, max_value=4096,
@@ -107,174 +147,117 @@ with st.sidebar.expander("Gelişmiş"):
 
 with st.sidebar.expander("Prompt davranışı"):
     free_mode = st.checkbox("Serbest mod (şablon ekleme)", value=False)
-    json_strict = False
-    if task in ("ocr", "detection"):
-        json_strict = st.checkbox("Yapısal JSON iste (OCR/Detection)", value=True)
+    json_strict = st.checkbox("Yapısal JSON iste (OCR/Detection)", value=True) if task in ("ocr","detection") else False
 
-# vLLM süreç yönetimi
-colA, colB, colC = st.sidebar.columns(3)
-if colA.button("Başlat"):
-    launcher.stop()
-    pid = launcher.start(selected.key)
-    st.sidebar.success(f"PID {pid}")
-if colB.button("Durdur"):
-    launcher.stop()
-    st.sidebar.info("Durduruldu")
-if colC.button("Yenile"):
-    st.rerun()
+c1, c2 = st.sidebar.columns(2)
+if c1.button("Başlat"):
+    try:
+        api.serve_model(selected["key"])
+        st.sidebar.success("Model başlatıldı")
+    except Exception as e:
+        st.sidebar.error(f"Hata: {e}")
+if c2.button("Durdur"):
+    try:
+        api.stop_model()
+        st.sidebar.info("Durduruldu")
+    except Exception as e:
+        st.sidebar.error(f"Hata: {e}")
 
-# Healthcheck
-try:
-    alive = backend.list_models() is not None
-except Exception:
-    alive = False
-st.toast("vLLM aktif" if alive else "vLLM kapalı", icon="✅" if alive else "⚠️")
+st.toast("Gateway aktif" if light_gateway_alive() else "Gateway kapalı",
+         icon="✅" if light_gateway_alive() else "⚠️")
 
-# ------------------ Chat-like Main Area -----------
+
+# ---------------- Main (chat) ----------------
 st.markdown("### Sohbet")
 
-# 1) Görsel yükle (yeni sohbet başlatır)
-max_long_side = int(cfg_app.get("limits", {}).get("max_image_long_side", 1280))
-up = st.file_uploader("Yeni görsel yükle (PNG/JPG) — yeni sohbet başlatır", type=["png", "jpg", "jpeg"], accept_multiple_files=False)
-
+# 1) Görsel yükleyip thread oluştur
+up = st.file_uploader("Yeni görsel yükle (PNG/JPG) — yeni sohbet başlatır",
+                      type=["png","jpg","jpeg"], accept_multiple_files=False)
 if up is not None:
-    original_bytes = up.read()
-    image_bytes = maybe_resize(original_bytes, max_long_side)
-    image_b64 = file_to_b64png(image_bytes)
-    dataurl = f"data:image/png;base64,{image_b64}"
-    img_id = img_sha1(image_bytes)
-    st.session_state.threads[img_id] = {
-        "image_bytes": image_bytes,
-        "image_dataurl": dataurl,
-        "history": []  # [{role:'user'/'assistant', 'text': str}]
-    }
-    st.session_state.current_thread_id = img_id
-    st.success("Görsel yüklendi. Bu görsele bağlı sohbet başladı.")
+    try:
+        b = up.read()
+        res = api.create_thread(b, up.name)
+        tid = res["thread_id"]
+        st.session_state.current_thread_id = tid
+        set_thread_preview(tid, res["preview_dataurl"])
+        st.success("Görsel yüklendi; bu görsele bağlı sohbet başladı.")
+    except Exception as e:
+        st.error(f"Thread oluşturulamadı: {e}")
 
-# 2) aktif thread var mı?
+# 2) Aktif thread kontrol
 tid = st.session_state.current_thread_id
 if not tid:
-    st.info("Başlamak için bir görsel yükleyin; sonra alttaki chat alanından sorular sorabilirsiniz.")
+    st.info("Başlamak için bir görsel yükleyin; ardından aşağıdan soru sorun.")
     st.stop()
 
-thread = st.session_state.threads[tid]
-image_bytes = thread["image_bytes"]
-image_dataurl = thread["image_dataurl"]
-history: List[Dict[str, Any]] = thread["history"]
-
-# Üstte küçük önizleme
+# 3) Header: küçük önizleme
 with st.container():
     col1, col2 = st.columns([1, 3])
     with col1:
-        st.image(Image.open(BytesIO(image_bytes)), caption="Aktif görsel", use_column_width=True)
+        purl = st.session_state.threads_local.get(tid, {}).get("preview_dataurl") or ""
+        im = to_image_from_dataurl(purl) if purl else None
+        if im:
+            st.image(im, caption="Aktif görsel", use_container_width=True)
+        else:
+            st.caption("Önizleme yok.")
     with col2:
-        st.caption("Bu sohbet bu görsele bağlıdır. Yeni görsel yüklediğinizde yeni bir sohbet başlar.")
+        st.caption("Bu sohbet bu görsele bağlı. Yeni görsel yüklenince yeni sohbet başlar.")
 
-# 3) geçmişi baloncuk olarak göster
-for turn in history:
-    if turn["role"] == "user":
-        with st.chat_message("user"):
-            st.markdown(turn["text"])
-    else:
-        with st.chat_message("assistant"):
-            # detection JSON ise kutu görseli olabilir
-            if isinstance(turn.get("render"), dict) and turn["render"].get("boxes"):
-                st.markdown(turn["text"])
-                ann = turn["render"]["annotated_png"]
-                st.image(Image.open(BytesIO(ann)), caption="Kutular çizildi")
-                st.json(turn["render"]["boxes"])
-            else:
-                st.markdown(turn["text"])
+# 4) Chat inputu ÖNCE işle (stabilite için kritik)
+prompt = st.chat_input("Sorunuzu yazın… (aynı görsele birden çok soru)")
+if prompt:
+    # a) kullanıcı mesajını hemen ekle
+    add_local_message(tid, "user", prompt)
 
-# 4) chat input
-prompt = st.chat_input("Sorunuzu yazın… (aynı görsele istediğiniz kadar soru sorabilirsiniz)")
-if prompt and alive:
-    # mesajları oluştur
-    # a) geçmişi metin olarak iletelim (role-preserving)
-    msgs: List[Dict[str, Any]] = []
-    for t in history:
-        if t["role"] == "user":
-            msgs.append({"role": "user", "content": [{"type": "text", "text": t["text"]}]})
-        else:
-            msgs.append({"role": "assistant", "content": [{"type": "text", "text": t["text"]}]})
-
-    # b) bu tur için strateji
-    if free_mode:
-        strat = DirectStrategy()
-    else:
-        if task == "caption":
-            strat = CaptionStrategy()
-        elif task == "vqa":
-            strat = VQAStrategy()
-        elif task == "ocr":
-            strat = OCRStrategy() if json_strict else DirectStrategy()
-        elif task == "detection":
-            strat = DetectionStrategy(strict_json=json_strict)
-        else:
-            strat = DirectStrategy()
-
-    # c) bu turdaki kullanıcı mesajını (görselle birlikte) ekle
-    user_msg = strat.build_messages(prompt, image_dataurl)
-    if not isinstance(user_msg, list):
-        user_msg = [user_msg]
-    msgs.extend(user_msg)
-
-    gen_kwargs = dict(
-        max_tokens=int(max_new_tokens),
-        temperature=float(temperature),
-        top_p=float(top_p),
-        presence_penalty=float(presence_penalty),
-        frequency_penalty=float(frequency_penalty),
+    # b) gateway'e isteği gönder ve asistan yanıtını ekle
+    payload = dict(
+        prompt=prompt, task=task, free_mode=free_mode, json_strict=json_strict,
+        gen_kwargs=dict(
+            max_tokens=int(max_new_tokens),
+            temperature=float(temperature),
+            top_p=float(top_p),
+            presence_penalty=float(presence_penalty),
+            frequency_penalty=float(frequency_penalty),
+        ),
     )
-    served_name = selected.served_name
-
-    # UI: önce kullanıcı balonunu ekle
-    history.append({"role": "user", "text": prompt})
-    with st.chat_message("user"):
-        st.markdown(prompt)
-
-    # model çağrısı
-    with st.chat_message("assistant"):
-        with st.spinner("Yanıt üretiliyor…"):
-            try:
-                resp = backend.vision_chat(served_name, msgs, gen_kwargs)
-                out = strat.parse_response(resp.text)
-            except Exception as e:
-                st.error(f"Hata: {e}")
-                st.stop()
-
-        # detection + json_strict'te kutu çiz
-        if task == "detection" and not free_mode and json_strict and isinstance(out, dict):
-            # ham metin + kutular
-            raw = out.get("raw", "")
-            boxes = out.get("boxes", [])
-            render_payload = {}
-            if boxes:
-                ann_png = draw_boxes(image_bytes, boxes)
-                st.markdown(raw if raw else "Bulunan kutular:")
-                st.image(Image.open(BytesIO(ann_png)), caption="Kutular çizildi")
-                st.json(boxes)
-                render_payload = {"boxes": boxes, "annotated_png": ann_png}
-            else:
-                st.markdown(raw if raw else "Kutu bulunamadı.")
-            history.append({"role": "assistant", "text": raw if raw else " ", "render": render_payload})
+    with st.spinner("Yanıt üretiliyor…"):
+        try:
+            resp = api.chat_turn(tid, payload)
+        except Exception as e:
+            add_local_message(tid, "assistant", f"Hata: {e}")
         else:
-            # normal metin
-            if isinstance(out, (dict, list)):
-                st.json(out)
-                history.append({"role": "assistant", "text": str(out)})
+            if isinstance(resp, dict) and ("annotated_png_b64" in resp or "boxes" in resp):
+                txt = resp.get("text", "")
+                render = {
+                    "annotated_png_b64": resp.get("annotated_png_b64"),
+                    "boxes": resp.get("boxes")
+                }
+                add_local_message(tid, "assistant", txt or " ", render=render)
             else:
-                st.markdown(out)
-                history.append({"role": "assistant", "text": out})
+                txt = resp.get("text", str(resp)) if isinstance(resp, dict) else str(resp)
+                add_local_message(tid, "assistant", txt)
 
-# 5) Alt araçlar
-c1, c2 = st.columns(2)
-with c1:
+# 5) TÜM geçmişi ts'e göre sıralı render et (kullanıcı sağ, asistan sol)
+for m in sorted_history(tid):
+    show_bubble(m["role"], m["text"])
+    if m["role"] == "assistant" and isinstance(m.get("render"), dict):
+        r = m["render"]
+        if r.get("annotated_png_b64"):
+            try:
+                st.image(Image.open(BytesIO(base64.b64decode(r["annotated_png_b64"]))), caption="Kutular")
+            except Exception:
+                pass
+        if r.get("boxes"):
+            st.json(r["boxes"])
+
+# 6) Araçlar
+cL, cR = st.columns(2)
+with cL:
     if st.button("Bu sohbeti sıfırla (aynı görsel)"):
-        thread["history"] = []
+        st.session_state.threads_local[tid]["history"] = []
         st.rerun()
-with c2:
+with cR:
     if st.button("Tüm sohbetleri temizle"):
-        st.session_state.threads = {}
+        st.session_state.threads_local = {}
         st.session_state.current_thread_id = None
         st.rerun()
