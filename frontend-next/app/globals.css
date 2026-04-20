@@ -1,0 +1,81 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    --base-bg: #f2f5fb;
+    --surface-1: #ffffff;
+    --surface-2: #f8fafe;
+    --surface-3: #eef3fb;
+    --border: #d9e2f0;
+
+    --primary: #0f766e;
+    --primary-foreground: #f7fffd;
+    --accent-1: #155eef;
+    --subtle-1: #ddf3ee;
+    --subtle-2: #e7edff;
+
+    --text-high: #0f172a;
+    --text-dim: #475569;
+    --text-muted: #64748b;
+
+    --error: #dc2626;
+    --warning: #d97706;
+    --success: #059669;
+
+    --background: #f2f5fb;
+    --foreground: #0f172a;
+    --card: #ffffff;
+    --card-foreground: #0f172a;
+    --popover: #ffffff;
+    --popover-foreground: #0f172a;
+    --muted: #eef3fb;
+    --muted-foreground: #475569;
+    --secondary: #eaf0f9;
+    --secondary-foreground: #0f172a;
+    --accent: #e7edff;
+    --accent-foreground: #0f1f40;
+    --destructive: #dc2626;
+    --destructive-foreground: #ffffff;
+    --ring: #0f766e;
+    --input: #c7d4e7;
+    --radius: 0.5rem;
+  }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply bg-base-bg text-text-high;
+    font-family: "Manrope", "IBM Plex Sans", "Source Sans 3", "Segoe UI", sans-serif;
+    background:
+      radial-gradient(circle at 8% 10%, rgba(21, 94, 239, 0.12), transparent 30%),
+      radial-gradient(circle at 92% 0%, rgba(15, 118, 110, 0.14), transparent 32%),
+      linear-gradient(180deg, #f7f9fd 0%, #eef3f9 100%);
+    min-height: 100svh;
+  }
+
+  ::selection {
+    background: rgba(15, 118, 110, 0.18);
+    color: #0f172a;
+  }
+
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+
+  ::-webkit-scrollbar-thumb {
+    background: rgba(100, 116, 139, 0.35);
+    border-radius: 999px;
+    border: 2px solid transparent;
+    background-clip: content-box;
+  }
+
+  ::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}

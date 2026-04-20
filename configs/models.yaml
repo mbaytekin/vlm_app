@@ -1,5 +1,6 @@
 defaults:
   api_base: http://localhost:8000/v1
+  default_model_key: gemma4_e4b_it_8bit
   max_model_len: 4096              # önce 4096 ile dene; sonra 8192'ye çıkarsın
   limit_mm_per_prompt: '{"image":1}'
   gpu_memory_utilization: 0.90     # 0.88–0.92 arası genelde güvenli
@@ -7,6 +8,38 @@ defaults:
 
 
 models:
+  - key: gemma4_e4b_it_8bit
+    title: "Gemma 4 E4B (Direct 4-bit)"
+    hf_id: "google/gemma-4-E4B-it"
+    served_name: "gemma-4-e4b-it-direct"
+    runtime: "direct"
+    direct_quant: "4bit"
+    notes: "16GB VRAM için direct runtime (Transformers+BitsAndBytes). Gemma seçilince vLLM süreci kapatılır."
+    supported_tasks: [ "caption","vqa","ocr" ]
+  - key: gemma4_e4b_it
+    title: "Gemma 4 E4B (vLLM)"
+    hf_id: "google/gemma-4-E4B-it"
+    served_name: "gemma-4-e4b-it"
+    max_model_len: 8192
+    limit_mm_per_prompt: '{"image":1,"audio":1}'
+    notes: "Text+Vision+Audio; vLLM 0.19 + güncel Transformers gerekir."
+    supported_tasks: [ "caption","vqa","ocr" ]
+  - key: gemma4_e4b_unsloth_gguf
+    title: "Gemma 4 E4B (Unsloth GGUF)"
+    hf_id: "unsloth/gemma-4-E4B-it-GGUF"
+    local_path: "models/gemma4_e4b_unsloth_gguf"
+    model_file: "gemma-4-E4B-it-Q4_K_M.gguf"
+    download_allow_patterns:
+      - "gemma-4-E4B-it-Q4_K_M.gguf"
+      - "mmproj-F16.gguf"
+    load_format: "gguf"
+    tokenizer: "google/gemma-4-E4B-it"
+    hf_config_path: "google/gemma-4-E4B-it"
+    served_name: "gemma-4-e4b-unsloth-gguf"
+    max_model_len: 16384
+    limit_mm_per_prompt: '{"image":1,"audio":1}'
+    notes: "GGUF Gemma4 hattı vLLM'de stabil değil; mümkünse 'Gemma 4 E4B (vLLM)' kullanın."
+    supported_tasks: [ "caption","vqa","ocr" ]
   - key: qwen2_5_vl_7b_awq
     title: "Qwen2.5-VL 7B (AWQ)"
     hf_id: "Qwen/Qwen2.5-VL-7B-Instruct-AWQ"
@@ -33,4 +66,3 @@ models:
     served_name: "internvl2-8b"
     notes: "VQA/Caption güçlü."
     supported_tasks: [ "caption","vqa" ]
-

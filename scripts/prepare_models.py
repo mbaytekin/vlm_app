@@ -37,7 +37,13 @@ def ensure_local_path(model: Dict[str, Any]) -> pathlib.Path:
     lp = model.get("local_path")
     return ((ROOT / lp) if lp else (ROOT / "models" / model["key"])).resolve()
 
-def download_model(hf_id: str, local_dir: pathlib.Path, token: str | None, force: bool) -> Tuple[bool, str]:
+def download_model(
+    hf_id: str,
+    local_dir: pathlib.Path,
+    token: str | None,
+    force: bool,
+    allow_patterns: List[str] | None = None,
+) -> Tuple[bool, str]:
     if snapshot_download is None:
         return False, "huggingface_hub kurulu değil (pip install huggingface_hub)"
     if is_dir_nonempty(local_dir) and not force:
@@ -49,6 +55,8 @@ def download_model(hf_id: str, local_dir: pathlib.Path, token: str | None, force
             "local_dir": str(local_dir),
             "local_dir_use_symlinks": False,
         }
+        if allow_patterns:
+            kwargs["allow_patterns"] = allow_patterns
         # sadece varsa token ver; yoksa hiç verme (public repo’lar tokensız çalışır)
         if token:
             kwargs["token"] = token
@@ -78,6 +86,11 @@ def main():
             continue
         hf_id = m["hf_id"]
         local_dir = ensure_local_path(m)
+        allow_patterns = m.get("download_allow_patterns")
+        if isinstance(allow_patterns, str):
+            allow_patterns = [allow_patterns]
+        if not isinstance(allow_patterns, list):
+            allow_patterns = None
 
         if is_dir_nonempty(local_dir) and not args.force:
             rows.append((key, "OK (local)", str(local_dir))); continue
@@ -85,7 +98,7 @@ def main():
         if not net:
             rows.append((key, "MISSING (offline)", f"indirilemedi, beklenen: {local_dir}")); continue
 
-        ok, note = download_model(hf_id, local_dir, hf_token, args.force)
+        ok, note = download_model(hf_id, local_dir, hf_token, args.force, allow_patterns=allow_patterns)
         rows.append((key, "OK (downloaded)" if ok else "ERROR", note))
 
     print("\n== MODEL HAZIRLIK RAPORU ==")
